@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Traffic Nexus Local</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#0f1220;color:#eef;margin:0;padding:24px}
+    h1,h2{margin:.2rem 0 1rem}
+    .grid{display:grid;grid-template-columns:320px 1fr;gap:18px}
+    .card{background:#171b2f;border:1px solid #2c3257;border-radius:12px;padding:16px}
+    button,input{padding:10px;border-radius:8px;border:1px solid #445}
+    button{background:#5fe3a1;color:#002;font-weight:700;cursor:pointer}
+    input{width:100%;background:#0d1020;color:#eef}
+    canvas{width:100%;height:520px;background:#070a14;border-radius:10px;border:1px solid #334}
+    pre{white-space:pre-wrap;word-break:break-word;background:#0d1020;padding:12px;border-radius:8px;max-height:240px;overflow:auto}
+    .row{display:flex;gap:8px;margin:8px 0}.row>*{flex:1}
+    .pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#223;color:#9df;margin-right:6px}
+  </style>
+</head>
+<body>
+  <h1>Traffic Nexus Local</h1>
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>ML Training</h2>
+        <div class="row"><input id="episodes" type="number" value="40" min="5" max="200"></div>
+        <button onclick="trainModel()">Train shared DQN</button>
+        <pre id="trainOut">No training run yet.</pre>
+      </div>
+      <div class="card" style="margin-top:18px">
+        <h2>OSM Import</h2>
+        <input id="place" value="Chennai, India" />
+        <div class="row"><input id="radius" type="number" value="1800"></div>
+        <button onclick="importOSM()">Import with Overpass fallback</button>
+        <pre id="osmOut">No OSM query yet.</pre>
+      </div>
+      <div class="card" style="margin-top:18px">
+        <h2>Features made real</h2>
+        <div class="pill">fairness reward</div>
+        <div class="pill">forecast model</div>
+        <div class="pill">shared DQN</div>
+        <div class="pill">experiment metrics</div>
+        <div class="pill">OSM fallback proxy</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Synthetic multi-intersection network</h2>
+      <canvas id="cv" width="900" height="520"></canvas>
+    </div>
+  </div>
+<script>
+async function loadNetwork(){
+  const res = await fetch('/api/network/synthetic?rows=2&cols=2');
+  const net = await res.json();
+  drawNetwork(net);
+}
+function drawNetwork(net){
+  const cv = document.getElementById('cv');
+  const c = cv.getContext('2d');
+  c.clearRect(0,0,cv.width,cv.height);
+  const pad=80;
+  const xs=net.nodes.map(n=>n.x), ys=net.nodes.map(n=>n.y);
+  const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
+  const sx=(cv.width-pad*2)/Math.max(1,maxx-minx); const sy=(cv.height-pad*2)/Math.max(1,maxy-miny);
+  const s=Math.min(sx,sy);
+  const map={};
+  net.nodes.forEach(n=>{map[n.id]={x:pad+(n.x-minx)*s,y:pad+(n.y-miny)*s}})
+  c.lineWidth=10; c.strokeStyle='#415';
+  net.edges.forEach(e=>{c.beginPath();c.moveTo(map[e.from].x,map[e.from].y);c.lineTo(map[e.to].x,map[e.to].y);c.stroke();});
+  net.nodes.forEach(n=>{c.fillStyle='#5fe3a1';c.beginPath();c.arc(map[n.id].x,map[n.id].y,12,0,Math.PI*2);c.fill();c.fillStyle='#001';c.fillText(n.id,map[n.id].x-8,map[n.id].y+4);});
+}
+async function trainModel(){
+  const episodes=Number(document.getElementById('episodes').value||40);
+  const res = await fetch('/api/ml/train',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({episodes})});
+  const data = await res.json();
+  document.getElementById('trainOut').textContent = JSON.stringify(data,null,2);
+}
+async function importOSM(){
+  const place=document.getElementById('place').value;
+  const radius=Number(document.getElementById('radius').value||1800);
+  const res = await fetch('/api/osm/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({place,radius})});
+  const data = await res.json();
+  document.getElementById('osmOut').textContent = JSON.stringify(data,null,2).slice(0,5000);
+}
+loadNetwork();
+</script>
+</body>
+</html>

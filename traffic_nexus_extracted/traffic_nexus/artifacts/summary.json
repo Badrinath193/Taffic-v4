@@ -1,0 +1,7 @@
+{
+  "episodes": 20,
+  "final_avg_reward": -34346.79978124435,
+  "final_avg_queue": 248.21129965783837,
+  "final_avg_fairness_penalty": 16.52774163921123,
+  "best_avg_reward": -18417.103338268673
+}
