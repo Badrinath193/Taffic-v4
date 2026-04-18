@@ -50,15 +50,20 @@ export default function App() {
           if (msg.type === "snapshot") {
             const snap = { ...msg.snapshot, _policy: msg.policy };
             setSnapshot(snap);
-            if (msg.v2x && msg.v2x.length) {
+            if (Array.isArray(msg.v2x) && msg.v2x.length) {
+              // Keep a rolling window of the most recent messages.
+              // Each broadcast carries the last ~10 real events from the backend bus.
               setV2x((prev) => {
-                const seen = new Set(prev.map((m) => `${m.ts}-${m.t}-${m.src}`));
-                const additions = msg.v2x.filter((m) => !seen.has(`${m.ts}-${m.t}-${m.src}`));
-                return [...additions, ...prev].slice(0, 80);
+                const keyOf = (m) => `${m.ts}|${m.t}|${m.src}|${JSON.stringify(m.p)}`;
+                const seen = new Set(prev.map(keyOf));
+                const fresh = msg.v2x.filter((m) => !seen.has(keyOf(m)));
+                return [...fresh.reverse(), ...prev].slice(0, 60);
               });
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          console.warn("[ws parse]", e);
+        }
       };
       ws.onclose = () => {
         wsRef.current = null;
@@ -93,6 +98,25 @@ export default function App() {
     }, 1200);
     return () => clearInterval(t);
   }, [trainStatus.state]);
+
+  // V2X fallback polling — ensures the panel always shows live messages
+  // even if the WebSocket frames don't include the v2x array.
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (!running) return;
+      api.v2xTail(30).then((msgs) => {
+        if (Array.isArray(msgs) && msgs.length) {
+          setV2x((prev) => {
+            const keyOf = (m) => `${m.ts}|${m.t}|${m.src}|${JSON.stringify(m.p)}`;
+            const seen = new Set(prev.map(keyOf));
+            const fresh = msgs.filter((m) => !seen.has(keyOf(m)));
+            return [...fresh.reverse(), ...prev].slice(0, 60);
+          });
+        }
+      }).catch(() => {});
+    }, 1500);
+    return () => clearInterval(t);
+  }, [running]);
 
   const onStart = async () => {
     await api.simStart(simCfg);
