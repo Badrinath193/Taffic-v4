@@ -156,6 +156,14 @@ class OSMRequest(BaseModel):
     radius: int = 1500
 
 
+class OSMLoadSimRequest(BaseModel):
+    place: str
+    radius: int = 1500
+    max_nodes: int = 600
+    max_vehicles: int = 300
+    autostart: bool = True
+
+
 # ---------------- Endpoints ----------------
 
 @app.get("/api/health")
@@ -348,6 +356,73 @@ async def osm_import(req: OSMRequest):
 async def osm_cached():
     docs = await db.osm_cache.find({}, {"value.place": 1, "value.radius": 1, "value.source": 1}).to_list(length=50)
     return [d.get("value", {}) for d in docs]
+
+
+@app.post("/api/osm/load_sim")
+async def osm_load_sim(req: OSMLoadSimRequest):
+    """Import OSM for a place and load it into the running simulator.
+
+    The live WebSocket broadcast immediately reflects the new city graph,
+    so both the React Three.js viewer and any connected Unity client
+    re-render the world using the real OSM nodes, edges and traffic signals.
+    """
+    # 1. reuse cache if available
+    ck_hit = await _cache_get(f"osm:{req.place.lower()}|{req.radius}")
+    if ck_hit:
+        result = ck_hit
+        result["cache"] = "hit"
+    else:
+        try:
+            result = import_osm(req.place, req.radius)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        try:
+            await _cache_put(f"osm:{req.place.lower()}|{req.radius}", result)
+        except Exception as exc:
+            print("[warn] cache put failed:", exc)
+
+    graph = result.get("graph") or {}
+    if not graph.get("nodes"):
+        raise HTTPException(status_code=422, detail="OSM import returned an empty graph")
+
+    # 2. rebuild the sim on the OSM network
+    if RT.sim is None:
+        RT.reset(max_vehicles=req.max_vehicles)
+    try:
+        info = RT.sim.load_from_osm(graph, max_nodes=req.max_nodes)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"load_from_osm failed: {exc}")
+    RT.sim.max_vehicles = req.max_vehicles
+    # v2x bus must be rebuilt to reference the new sim
+    RT.v2x = V2XBus(RT.sim, max_log=200)
+
+    # 3. start loop if requested
+    if req.autostart:
+        RT.running = True
+        if RT.loop_task is None or RT.loop_task.done():
+            RT.loop_task = asyncio.create_task(_sim_loop())
+
+    # 4. immediately broadcast the new layout so clients can rebuild geometry
+    snap = RT.sim.snapshot()
+    await WS.broadcast({
+        "type": "snapshot",
+        "snapshot": snap,
+        "v2x": [],
+        "metrics": None,
+        "policy": RT.policy,
+        "osm_loaded": True,
+        "place": req.place,
+        "center": result.get("location"),
+    })
+
+    return {
+        "ok": True,
+        "place": req.place,
+        "location": result.get("location"),
+        "loaded": info,
+        "running": RT.running,
+        "source": result.get("source"),
+    }
 
 
 # ---- Simulation loop ----

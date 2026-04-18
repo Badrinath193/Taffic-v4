@@ -30,9 +30,11 @@ export default function App() {
   const [trainStatus, setTrainStatus] = useState({ state: "idle", events: [] });
   const [summary, setSummary] = useState(null);
   const [osmResult, setOsmResult] = useState(null);
-  const [osmPlace, setOsmPlace] = useState("Chennai, India");
-  const [osmRadius, setOsmRadius] = useState(1500);
+  const [osmPlace, setOsmPlace] = useState("Koramangala, Bengaluru, India");
+  const [osmRadius, setOsmRadius] = useState(1200);
+  const [osmMaxNodes, setOsmMaxNodes] = useState(600);
   const [osmLoading, setOsmLoading] = useState(false);
+  const [osmSimLoading, setOsmSimLoading] = useState(false);
   const [simCfg, setSimCfg] = useState({ rows: 3, cols: 3, max_vehicles: 200 });
   const [episodes, setEpisodes] = useState(25);
   const [metrics, setMetrics] = useState([]);
@@ -152,6 +154,30 @@ export default function App() {
       setOsmResult({ error: e?.response?.data?.detail || e.message || "OSM import failed" });
     } finally {
       setOsmLoading(false);
+    }
+  };
+
+  const onLoadOSMintoSim = async () => {
+    setOsmSimLoading(true);
+    try {
+      const r = await api.osmLoadSim(osmPlace, Number(osmRadius), Number(osmMaxNodes), simCfg.max_vehicles, true);
+      setOsmResult({
+        ...osmResult,
+        sim_loaded: true,
+        loaded: r.loaded,
+        location: r.location,
+        source: r.source,
+        place: r.place,
+      });
+      setRunning(true);
+      // scroll to 3D section so the user immediately sees the city
+      setTimeout(() => {
+        document.querySelector("#three")?.scrollIntoView({ behavior: "smooth" });
+      }, 400);
+    } catch (e) {
+      setOsmResult({ ...osmResult, sim_error: e?.response?.data?.detail || e.message || "Load into sim failed" });
+    } finally {
+      setOsmSimLoading(false);
     }
   };
 
@@ -392,14 +418,35 @@ export default function App() {
             <label className="field-lbl">Place</label>
             <input className="input" value={osmPlace} onChange={(e) => setOsmPlace(e.target.value)} data-testid="osm-place" />
             <div style={{ height: 10 }} />
-            <label className="field-lbl">Radius (m)</label>
-            <input className="input" type="number" value={osmRadius} onChange={(e) => setOsmRadius(e.target.value)} data-testid="osm-radius" />
+            <div className="grid-2" style={{ gap: 10 }}>
+              <div>
+                <label className="field-lbl">Radius (m)</label>
+                <input className="input" type="number" value={osmRadius} onChange={(e) => setOsmRadius(e.target.value)} data-testid="osm-radius" />
+              </div>
+              <div>
+                <label className="field-lbl">Max Nodes</label>
+                <input className="input" type="number" value={osmMaxNodes} onChange={(e) => setOsmMaxNodes(e.target.value)} data-testid="osm-max-nodes" />
+              </div>
+            </div>
             <div style={{ height: 12 }} />
-            <button className="btn btn-primary" onClick={onImportOSM} disabled={osmLoading} data-testid="osm-import-btn">
-              {osmLoading ? "Fetching…" : "Import with Fallback"}
-            </button>
+            <div className="ctrl-row">
+              <button className="btn btn-ghost" onClick={onImportOSM} disabled={osmLoading} data-testid="osm-import-btn">
+                {osmLoading ? "Fetching…" : "Preview Import"}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={onLoadOSMintoSim}
+                disabled={osmSimLoading || osmLoading}
+                data-testid="osm-simulate-btn"
+                title="Pull OSM data and rebuild the live simulator on this real city"
+              >
+                {osmSimLoading ? "Loading…" : "Simulate City in 3D"}
+              </button>
+            </div>
             <p className="muted" style={{ fontSize: "0.7rem", marginTop: 12 }}>
-              Tries 5 Overpass mirrors. On total failure, serves offline Chennai / Bengaluru snapshots so your demo never breaks.
+              “Preview” just fetches & displays graph stats. “Simulate City in 3D” rebuilds the live
+              simulator on the real OSM network — both the 2D canvas, the Three.js 3D viewer and any
+              connected Unity client will immediately render the city.
             </p>
           </div>
           <div className="card">
@@ -419,6 +466,18 @@ export default function App() {
                 {osmResult.overpass_endpoint && <div className="metric-row"><span>Overpass</span><span style={{ fontSize: "0.65rem" }}>{osmResult.overpass_endpoint}</span></div>}
                 {osmResult.live_error && <div className="muted" style={{ fontSize: "0.7rem", marginTop: 8, color: "var(--warn)" }}>live failed → {osmResult.live_error}</div>}
               </>
+            )}
+            {osmResult?.sim_loaded && (
+              <div style={{ marginTop: 14, padding: "10px 12px", background: "rgba(95,227,161,0.1)", border: "1px solid rgba(95,227,161,0.3)", borderRadius: 8, fontSize: "0.78rem" }}>
+                ✅ Loaded into live simulator — <strong>{osmResult.loaded.nodes}</strong> nodes,{" "}
+                <strong>{osmResult.loaded.edges}</strong> edges, <strong>{osmResult.loaded.signals}</strong> signals.
+                Scroll down to 3D Bridge to see it rendered.
+              </div>
+            )}
+            {osmResult?.sim_error && (
+              <div style={{ marginTop: 14, color: "var(--accent)", fontSize: "0.78rem" }}>
+                {osmResult.sim_error}
+              </div>
             )}
           </div>
         </div>

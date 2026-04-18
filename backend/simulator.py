@@ -261,9 +261,83 @@ class VehicleSim:
         return {
             "nodes": list(self.nodes.values()),
             "edges": [{"id": e["id"], "from": e["from"], "to": e["to"], "length": e["length"], "lanes": e["lanes"]} for e in self.edges],
-            "source": "synthetic-grid",
+            "source": getattr(self, "_source", "synthetic-grid"),
             "rows": self.rows,
             "cols": self.cols,
+        }
+
+    def load_from_osm(self, graph: Dict, max_nodes: int = 800):
+        """Replace the current network with an OSM-derived graph.
+
+        - `graph.nodes`: [{id, x, y, is_signal, lat, lon}]
+        - `graph.edges`: [{from, to, highway}]
+        Traffic lights are placed at every node with is_signal=True.
+        Large graphs are sub-sampled to at most `max_nodes` to keep the
+        per-vehicle sim interactive in the browser / Unity.
+        """
+        raw_nodes = graph.get("nodes", [])
+        raw_edges = graph.get("edges", [])
+        if not raw_nodes or not raw_edges:
+            raise ValueError("OSM graph has no nodes or edges")
+
+        # Sub-sample: keep every k-th node but always keep is_signal nodes
+        signals = [n for n in raw_nodes if n.get("is_signal")]
+        non_signals = [n for n in raw_nodes if not n.get("is_signal")]
+        if len(raw_nodes) > max_nodes:
+            keep_non = max(0, max_nodes - len(signals))
+            step = max(1, len(non_signals) // max(1, keep_non))
+            non_signals = non_signals[::step][:keep_non]
+        kept_nodes = signals + non_signals
+        kept_ids = {n["id"] for n in kept_nodes}
+
+        # reset
+        self.nodes = {}
+        self.edges = []
+        self.edge_map = {}
+        self.adjacency = {}
+        self.tls = {}
+        self.vehicles = []
+        self.next_vid = 0
+        self.step_id = 0
+        self.metrics_history = []
+        self._source = "osm"
+
+        for n in kept_nodes:
+            self.nodes[n["id"]] = {
+                "id": n["id"], "x": float(n["x"]), "y": float(n["y"]),
+                "is_signal": bool(n.get("is_signal")),
+                "lat": n.get("lat"), "lon": n.get("lon"),
+            }
+            if n.get("is_signal"):
+                self.tls[n["id"]] = TLState(node_id=n["id"], phase=self.rng.randint(0, 3))
+
+        for e in raw_edges:
+            a, b = e.get("from"), e.get("to")
+            if a in kept_ids and b in kept_ids:
+                length = math.hypot(
+                    self.nodes[a]["x"] - self.nodes[b]["x"],
+                    self.nodes[a]["y"] - self.nodes[b]["y"],
+                )
+                if length < 5.0:
+                    continue
+                eid = f"{a}->{b}"
+                rec = {"id": eid, "from": a, "to": b, "length": length, "lanes": 2}
+                self.edges.append(rec)
+                self.edge_map[eid] = rec
+                self.adjacency.setdefault(a, []).append((b, eid))
+
+        # Drop isolated nodes to keep sim valid
+        reachable = set()
+        for e in self.edges:
+            reachable.add(e["from"]); reachable.add(e["to"])
+        self.nodes = {k: v for k, v in self.nodes.items() if k in reachable}
+        self.tls = {k: v for k, v in self.tls.items() if k in reachable}
+
+        return {
+            "nodes": len(self.nodes),
+            "edges": len(self.edges),
+            "signals": len(self.tls),
+            "source": "osm",
         }
 
     def _random_edge(self) -> Dict:

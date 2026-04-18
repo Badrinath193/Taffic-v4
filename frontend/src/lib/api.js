@@ -29,5 +29,7 @@ export const api = {
 
   osmImport: (place, radius = 1500) =>
     http.post("/osm/import", { place, radius }, { timeout: 120000 }).then((r) => r.data),
+  osmLoadSim: (place, radius = 1500, max_nodes = 600, max_vehicles = 300, autostart = true) =>
+    http.post("/osm/load_sim", { place, radius, max_nodes, max_vehicles, autostart }, { timeout: 120000 }).then((r) => r.data),
   osmCached: () => http.get("/osm/cached").then((r) => r.data),
 };
