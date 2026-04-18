@@ -1,0 +1,74 @@
+{
+  "chennai": {
+    "location": {"lat": 13.0827, "lon": 80.2707, "display_name": "Chennai, Tamil Nadu, India (offline snapshot)"},
+    "graph": {
+      "source": "offline_fallback",
+      "signals": 6,
+      "nodes": [
+        {"id": "OF_0", "x": 0, "y": 0, "is_signal": true, "lat": 13.0827, "lon": 80.2707},
+        {"id": "OF_1", "x": 320, "y": 20, "is_signal": true, "lat": 13.0829, "lon": 80.2737},
+        {"id": "OF_2", "x": 640, "y": 0, "is_signal": false, "lat": 13.0827, "lon": 80.2767},
+        {"id": "OF_3", "x": 960, "y": 30, "is_signal": true, "lat": 13.0830, "lon": 80.2797},
+        {"id": "OF_4", "x": 60, "y": 320, "is_signal": false, "lat": 13.0857, "lon": 80.2710},
+        {"id": "OF_5", "x": 380, "y": 340, "is_signal": true, "lat": 13.0859, "lon": 80.2740},
+        {"id": "OF_6", "x": 700, "y": 320, "is_signal": false, "lat": 13.0857, "lon": 80.2770},
+        {"id": "OF_7", "x": 1020, "y": 350, "is_signal": true, "lat": 13.0860, "lon": 80.2800},
+        {"id": "OF_8", "x": 20, "y": 640, "is_signal": false, "lat": 13.0887, "lon": 80.2707},
+        {"id": "OF_9", "x": 340, "y": 660, "is_signal": true, "lat": 13.0889, "lon": 80.2737},
+        {"id": "OF_10", "x": 680, "y": 640, "is_signal": false, "lat": 13.0887, "lon": 80.2767},
+        {"id": "OF_11", "x": 1000, "y": 670, "is_signal": false, "lat": 13.0890, "lon": 80.2797}
+      ],
+      "edges": [
+        {"from": "OF_0", "to": "OF_1", "highway": "primary"}, {"from": "OF_1", "to": "OF_0", "highway": "primary"},
+        {"from": "OF_1", "to": "OF_2", "highway": "primary"}, {"from": "OF_2", "to": "OF_1", "highway": "primary"},
+        {"from": "OF_2", "to": "OF_3", "highway": "primary"}, {"from": "OF_3", "to": "OF_2", "highway": "primary"},
+        {"from": "OF_4", "to": "OF_5", "highway": "secondary"}, {"from": "OF_5", "to": "OF_4", "highway": "secondary"},
+        {"from": "OF_5", "to": "OF_6", "highway": "secondary"}, {"from": "OF_6", "to": "OF_5", "highway": "secondary"},
+        {"from": "OF_6", "to": "OF_7", "highway": "secondary"}, {"from": "OF_7", "to": "OF_6", "highway": "secondary"},
+        {"from": "OF_8", "to": "OF_9", "highway": "residential"}, {"from": "OF_9", "to": "OF_8", "highway": "residential"},
+        {"from": "OF_9", "to": "OF_10", "highway": "residential"}, {"from": "OF_10", "to": "OF_9", "highway": "residential"},
+        {"from": "OF_10", "to": "OF_11", "highway": "residential"}, {"from": "OF_11", "to": "OF_10", "highway": "residential"},
+        {"from": "OF_0", "to": "OF_4", "highway": "primary"}, {"from": "OF_4", "to": "OF_0", "highway": "primary"},
+        {"from": "OF_1", "to": "OF_5", "highway": "primary"}, {"from": "OF_5", "to": "OF_1", "highway": "primary"},
+        {"from": "OF_2", "to": "OF_6", "highway": "primary"}, {"from": "OF_6", "to": "OF_2", "highway": "primary"},
+        {"from": "OF_3", "to": "OF_7", "highway": "primary"}, {"from": "OF_7", "to": "OF_3", "highway": "primary"},
+        {"from": "OF_4", "to": "OF_8", "highway": "secondary"}, {"from": "OF_8", "to": "OF_4", "highway": "secondary"},
+        {"from": "OF_5", "to": "OF_9", "highway": "secondary"}, {"from": "OF_9", "to": "OF_5", "highway": "secondary"},
+        {"from": "OF_6", "to": "OF_10", "highway": "secondary"}, {"from": "OF_10", "to": "OF_6", "highway": "secondary"},
+        {"from": "OF_7", "to": "OF_11", "highway": "secondary"}, {"from": "OF_11", "to": "OF_7", "highway": "secondary"}
+      ]
+    }
+  },
+  "bengaluru": {
+    "location": {"lat": 12.9716, "lon": 77.5946, "display_name": "Bengaluru, Karnataka, India (offline snapshot)"},
+    "graph": {
+      "source": "offline_fallback",
+      "signals": 4,
+      "nodes": [
+        {"id": "OF_B0", "x": 0, "y": 0, "is_signal": true, "lat": 12.9716, "lon": 77.5946},
+        {"id": "OF_B1", "x": 300, "y": 0, "is_signal": true, "lat": 12.9716, "lon": 77.5976},
+        {"id": "OF_B2", "x": 600, "y": 0, "is_signal": false, "lat": 12.9716, "lon": 77.6006},
+        {"id": "OF_B3", "x": 0, "y": 300, "is_signal": false, "lat": 12.9746, "lon": 77.5946},
+        {"id": "OF_B4", "x": 300, "y": 300, "is_signal": true, "lat": 12.9746, "lon": 77.5976},
+        {"id": "OF_B5", "x": 600, "y": 300, "is_signal": true, "lat": 12.9746, "lon": 77.6006},
+        {"id": "OF_B6", "x": 0, "y": 600, "is_signal": false, "lat": 12.9776, "lon": 77.5946},
+        {"id": "OF_B7", "x": 300, "y": 600, "is_signal": false, "lat": 12.9776, "lon": 77.5976},
+        {"id": "OF_B8", "x": 600, "y": 600, "is_signal": false, "lat": 12.9776, "lon": 77.6006}
+      ],
+      "edges": [
+        {"from": "OF_B0", "to": "OF_B1", "highway": "primary"}, {"from": "OF_B1", "to": "OF_B0", "highway": "primary"},
+        {"from": "OF_B1", "to": "OF_B2", "highway": "primary"}, {"from": "OF_B2", "to": "OF_B1", "highway": "primary"},
+        {"from": "OF_B3", "to": "OF_B4", "highway": "secondary"}, {"from": "OF_B4", "to": "OF_B3", "highway": "secondary"},
+        {"from": "OF_B4", "to": "OF_B5", "highway": "secondary"}, {"from": "OF_B5", "to": "OF_B4", "highway": "secondary"},
+        {"from": "OF_B6", "to": "OF_B7", "highway": "residential"}, {"from": "OF_B7", "to": "OF_B6", "highway": "residential"},
+        {"from": "OF_B7", "to": "OF_B8", "highway": "residential"}, {"from": "OF_B8", "to": "OF_B7", "highway": "residential"},
+        {"from": "OF_B0", "to": "OF_B3", "highway": "primary"}, {"from": "OF_B3", "to": "OF_B0", "highway": "primary"},
+        {"from": "OF_B1", "to": "OF_B4", "highway": "primary"}, {"from": "OF_B4", "to": "OF_B1", "highway": "primary"},
+        {"from": "OF_B2", "to": "OF_B5", "highway": "primary"}, {"from": "OF_B5", "to": "OF_B2", "highway": "primary"},
+        {"from": "OF_B3", "to": "OF_B6", "highway": "secondary"}, {"from": "OF_B6", "to": "OF_B3", "highway": "secondary"},
+        {"from": "OF_B4", "to": "OF_B7", "highway": "secondary"}, {"from": "OF_B7", "to": "OF_B4", "highway": "secondary"},
+        {"from": "OF_B5", "to": "OF_B8", "highway": "secondary"}, {"from": "OF_B8", "to": "OF_B5", "highway": "secondary"}
+      ]
+    }
+  }
+}

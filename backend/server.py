@@ -1,89 +1,428 @@
-from fastapi import FastAPI, APIRouter
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+"""Traffic Nexus — FastAPI server.
+
+Real features:
+  - /api/network/synthetic : returns grid network
+  - /api/sim/start|stop|step|state : live vehicle-level simulation
+  - /api/sim/set_policy : switch between fixed / pressure / learned
+  - /api/ml/train : starts REAL DQN training (async, streams progress)
+  - /api/ml/train_status : current progress
+  - /api/ml/metrics : historical training metrics
+  - /api/ml/evaluate : compare learned vs fixed vs pressure
+  - /api/osm/import : OSM with 5 mirrors + Mongo cache + offline fallback
+  - /api/v2x/tail : last N real V2X messages
+  - WS /ws/stream : realtime snapshot + V2X stream (Unity + Three.js protocol)
+"""
+from __future__ import annotations
+
+import asyncio
+import csv
+import json
 import os
-import logging
+import random
+import threading
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
+from typing import Dict, Optional
+
+import numpy as np
+import torch
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel
+
+from ml import (
+    DEVICE,
+    attach_forecast,
+    evaluate_policy,
+    load_forecast,
+    load_qnet,
+    train_shared_dqn,
+)
+from osm import import_osm
+from simulator import MultiIntersectionEnv, VehicleSim
+from unity_bridge import ConnectionManager
+from v2x import V2XBus
 
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(Path(__file__).parent / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+ART_DIR = Path(__file__).parent / "artifacts"
+ART_DIR.mkdir(exist_ok=True)
 
-# Create the main app without a prefix
-app = FastAPI()
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
-
-
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
-app.include_router(api_router)
-
+app = FastAPI(title="Traffic Nexus", version="2.0")
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+MONGO_URL = os.environ.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME")
+mongo_client = AsyncIOMotorClient(MONGO_URL)
+db = mongo_client[DB_NAME]
+
+
+# ---------------- Simulation state ----------------
+
+class SimRuntime:
+    def __init__(self):
+        self.sim: Optional[VehicleSim] = None
+        self.v2x: Optional[V2XBus] = None
+        self.running: bool = False
+        self.policy: str = "fixed"   # fixed | pressure | learned
+        self.q = None
+        self.forecast = None
+        self.forecast_blob = None
+        self.loop_task: Optional[asyncio.Task] = None
+
+    def reset(self, rows: int = 3, cols: int = 3, max_vehicles: int = 250, seed: int = 11):
+        self.sim = VehicleSim(rows=rows, cols=cols, max_vehicles=max_vehicles, seed=seed)
+        self.v2x = V2XBus(self.sim, max_log=200)
+        self.running = False
+
+    def ensure_models(self):
+        model_path = ART_DIR / "shared_dqn.pt"
+        forecast_path = ART_DIR / "forecast_model.pt"
+        if model_path.exists() and forecast_path.exists():
+            if self.q is None:
+                try:
+                    self.q = load_qnet(str(model_path))
+                    self.forecast, self.forecast_blob = load_forecast(str(forecast_path))
+                except Exception as exc:
+                    print("[warn] could not load models:", exc)
+
+    def decide(self) -> Dict[str, int]:
+        if self.sim is None:
+            return {}
+        if self.policy == "fixed":
+            return {nid: (self.sim.step_id // 30) % 2 for nid in self.sim.tls.keys()}
+        if self.policy == "pressure":
+            out = {}
+            for nid in self.sim.tls.keys():
+                ob = self.sim.intersection_obs(nid)
+                out[nid] = 0 if ob[0] >= ob[1] else 1
+            return out
+        # learned
+        self.ensure_models()
+        if self.q is None or self.forecast is None:
+            # fall back to pressure
+            out = {}
+            for nid in self.sim.tls.keys():
+                ob = self.sim.intersection_obs(nid)
+                out[nid] = 0 if ob[0] >= ob[1] else 1
+            return out
+        obs = {nid: self.sim.intersection_obs(nid) for nid in self.sim.tls.keys()}
+        obs = attach_forecast(self.forecast, self.forecast_blob, obs)
+        out = {}
+        with torch.no_grad():
+            for nid, ob in obs.items():
+                qv = self.q(torch.tensor(ob, dtype=torch.float32, device=DEVICE))
+                out[nid] = int(torch.argmax(qv).item())
+        return out
+
+
+RT = SimRuntime()
+RT.reset()
+WS = ConnectionManager()
+
+# Train status (thread -> main)
+TRAIN_STATUS: Dict = {"state": "idle", "events": []}
+TRAIN_LOCK = threading.Lock()
+
+
+# ---------------- Models ----------------
+
+class TrainRequest(BaseModel):
+    episodes: int = 30
+    seed: int = 7
+
+
+class SimStartRequest(BaseModel):
+    rows: int = 3
+    cols: int = 3
+    max_vehicles: int = 250
+    seed: int = 11
+
+
+class PolicyRequest(BaseModel):
+    policy: str   # fixed | pressure | learned
+
+
+class OSMRequest(BaseModel):
+    place: str
+    radius: int = 1500
+
+
+# ---------------- Endpoints ----------------
+
+@app.get("/api/health")
+async def health():
+    return {"ok": True, "models_loaded": RT.q is not None}
+
+
+@app.get("/api/network/synthetic")
+async def synthetic_network(rows: int = 3, cols: int = 3):
+    env = MultiIntersectionEnv(rows=rows, cols=cols)
+    return env.export_network()
+
+
+# ---- Sim control ----
+
+@app.post("/api/sim/start")
+async def sim_start(req: SimStartRequest):
+    RT.reset(rows=req.rows, cols=req.cols, max_vehicles=req.max_vehicles, seed=req.seed)
+    RT.running = True
+    if RT.loop_task is None or RT.loop_task.done():
+        RT.loop_task = asyncio.create_task(_sim_loop())
+    return {"ok": True, "network": RT.sim.export_network()}
+
+
+@app.post("/api/sim/stop")
+async def sim_stop():
+    RT.running = False
+    return {"ok": True}
+
+
+@app.post("/api/sim/reset")
+async def sim_reset(req: SimStartRequest):
+    was_running = RT.running
+    RT.reset(rows=req.rows, cols=req.cols, max_vehicles=req.max_vehicles, seed=req.seed)
+    RT.running = was_running
+    return {"ok": True, "network": RT.sim.export_network()}
+
+
+@app.post("/api/sim/set_policy")
+async def sim_set_policy(req: PolicyRequest):
+    if req.policy not in ("fixed", "pressure", "learned"):
+        raise HTTPException(status_code=400, detail="Invalid policy")
+    RT.policy = req.policy
+    RT.ensure_models()
+    model_loaded = RT.q is not None
+    return {"ok": True, "policy": RT.policy, "learned_available": model_loaded}
+
+
+@app.get("/api/sim/state")
+async def sim_state():
+    if RT.sim is None:
+        return {"running": False}
+    snap = RT.sim.snapshot()
+    snap["running"] = RT.running
+    snap["policy"] = RT.policy
+    snap["metrics"] = RT.sim.metrics_history[-1] if RT.sim.metrics_history else None
+    return snap
+
+
+@app.get("/api/sim/metrics")
+async def sim_metrics(limit: int = 200):
+    if RT.sim is None:
+        return []
+    return RT.sim.metrics_history[-limit:]
+
+
+# ---- V2X ----
+
+@app.get("/api/v2x/tail")
+async def v2x_tail(n: int = 50):
+    if RT.v2x is None:
+        return []
+    return RT.v2x.tail(n)
+
+
+# ---- ML ----
+
+def _train_thread(episodes: int, seed: int):
+    with TRAIN_LOCK:
+        TRAIN_STATUS["state"] = "running"
+        TRAIN_STATUS["events"] = []
+        TRAIN_STATUS["episodes"] = episodes
+
+    def cb(ev: Dict):
+        with TRAIN_LOCK:
+            TRAIN_STATUS["events"].append(ev)
+            if len(TRAIN_STATUS["events"]) > 400:
+                TRAIN_STATUS["events"] = TRAIN_STATUS["events"][-400:]
+
+    try:
+        result = train_shared_dqn(str(ART_DIR), episodes=episodes, seed=seed, progress_cb=cb)
+        # reload into runtime
+        RT.q = load_qnet(result.model_path)
+        RT.forecast, RT.forecast_blob = load_forecast(result.forecast_path)
+        evaluation = evaluate_policy(result.model_path, result.forecast_path, episodes=2)
+        with TRAIN_LOCK:
+            TRAIN_STATUS["state"] = "done"
+            TRAIN_STATUS["result"] = {
+                "rewards_tail": result.rewards[-10:],
+                "queues_tail": result.queues[-10:],
+                "fairness_tail": result.fairness[-10:],
+                "evaluation": evaluation,
+            }
+    except Exception as exc:
+        with TRAIN_LOCK:
+            TRAIN_STATUS["state"] = "error"
+            TRAIN_STATUS["error"] = str(exc)
+
+
+@app.post("/api/ml/train")
+async def ml_train(req: TrainRequest):
+    with TRAIN_LOCK:
+        if TRAIN_STATUS["state"] == "running":
+            raise HTTPException(status_code=409, detail="A training run is already in progress")
+    t = threading.Thread(target=_train_thread, args=(req.episodes, req.seed), daemon=True)
+    t.start()
+    return {"ok": True, "episodes": req.episodes}
+
+
+@app.get("/api/ml/train_status")
+async def ml_train_status():
+    with TRAIN_LOCK:
+        return dict(TRAIN_STATUS)
+
+
+@app.get("/api/ml/metrics")
+async def ml_metrics():
+    path = ART_DIR / "training_metrics.csv"
+    if not path.exists():
+        return []
+    rows = []
+    with open(path) as f:
+        reader = csv.DictReader(f)
+        for r in reader:
+            rows.append({k: float(v) if k != "episode" else int(float(v)) for k, v in r.items()})
+    return rows
+
+
+@app.get("/api/ml/summary")
+async def ml_summary():
+    path = ART_DIR / "summary.json"
+    if not path.exists():
+        return {"trained": False}
+    with open(path) as f:
+        blob = json.load(f)
+    blob["trained"] = True
+    return blob
+
+
+@app.post("/api/ml/evaluate")
+async def ml_evaluate():
+    model_path = ART_DIR / "shared_dqn.pt"
+    forecast_path = ART_DIR / "forecast_model.pt"
+    if not model_path.exists() or not forecast_path.exists():
+        raise HTTPException(status_code=404, detail="Train the model first")
+    result = evaluate_policy(str(model_path), str(forecast_path), episodes=2)
+    return result
+
+
+# ---- OSM ----
+
+async def _cache_get(key: str):
+    doc = await db.osm_cache.find_one({"_id": key}, {"_id": 0})
+    return doc["value"] if doc else None
+
+
+async def _cache_put(key: str, value: Dict):
+    await db.osm_cache.update_one({"_id": key}, {"$set": {"value": value}}, upsert=True)
+
+
+@app.post("/api/osm/import")
+async def osm_import(req: OSMRequest):
+    # cache is async so we wrap sync calls
+    ck_hit = await _cache_get(f"osm:{req.place.lower()}|{req.radius}")
+    if ck_hit:
+        ck_hit["cache"] = "hit"
+        return ck_hit
+    try:
+        result = import_osm(req.place, req.radius)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    try:
+        await _cache_put(f"osm:{req.place.lower()}|{req.radius}", result)
+    except Exception as exc:
+        print("[warn] cache put failed:", exc)
+    return result
+
+
+@app.get("/api/osm/cached")
+async def osm_cached():
+    docs = await db.osm_cache.find({}, {"value.place": 1, "value.radius": 1, "value.source": 1}).to_list(length=50)
+    return [d.get("value", {}) for d in docs]
+
+
+# ---- Simulation loop ----
+
+async def _sim_loop():
+    tick_hz = 8
+    dt = 1.0 / tick_hz
+    broadcast_every = 2   # broadcast 4 times/sec
+    step_cnt = 0
+    while True:
+        await asyncio.sleep(dt)
+        if not RT.running or RT.sim is None:
+            continue
+        try:
+            phases = RT.decide()
+            RT.sim.set_phases(phases)
+            RT.sim.step(dt=dt * 2.0, spawn_rate=1.1)
+            RT.v2x.tick()
+        except Exception as exc:
+            print("[sim_loop]", exc)
+            continue
+        step_cnt += 1
+        if step_cnt % broadcast_every == 0:
+            snap = RT.sim.snapshot()
+            v2x_tail = RT.v2x.tail(10)
+            await WS.broadcast({
+                "type": "snapshot",
+                "snapshot": snap,
+                "v2x": v2x_tail,
+                "metrics": RT.sim.metrics_history[-1] if RT.sim.metrics_history else None,
+                "policy": RT.policy,
+            })
+
+
+# ---- WebSocket ----
+
+@app.websocket("/ws/stream")
+async def ws_stream(ws: WebSocket):
+    await WS.connect(ws)
+    try:
+        await ws.send_json({"type": "hello", "msg": "Traffic Nexus Unity Bridge v2.0"})
+        while True:
+            data = await ws.receive_text()
+            try:
+                msg = json.loads(data)
+                if msg.get("type") == "cmd":
+                    act = msg.get("action")
+                    if act == "pause":
+                        RT.running = False
+                    elif act == "resume":
+                        RT.running = True
+                    elif act == "set_policy":
+                        RT.policy = msg.get("value", RT.policy)
+                        RT.ensure_models()
+                    await ws.send_json({"type": "ack", "action": act})
+            except Exception as exc:
+                await ws.send_json({"type": "error", "detail": str(exc)})
+    except WebSocketDisconnect:
+        await WS.disconnect(ws)
+
+
+# ---- Lifespan ----
+
+@app.on_event("startup")
+async def on_startup():
+    RT.ensure_models()
+    print("[startup] models loaded:", RT.q is not None)
+    # start sim loop running but paused until /api/sim/start
+    if RT.loop_task is None:
+        RT.loop_task = asyncio.create_task(_sim_loop())
+
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+async def on_shutdown():
+    RT.running = False
+    if RT.loop_task:
+        RT.loop_task.cancel()
+    mongo_client.close()
