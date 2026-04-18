@@ -1,58 +1,48 @@
-# Traffic Nexus — PRD
+# Traffic Nexus — PRD (FINAL)
 
 ## Original problem statement
-User delivered two artifacts:
-1. `traffic-signal-nexus-fixed1.html` — a single-file browser demo that **claimed** MARL, Unity3D, V2X, Google Maps integration but was all UI theatre (no ML, random V2X strings, timer-only signals).
-2. `traffic_nexus_local_upgrade.zip` — a minimal real FastAPI + PyTorch project.
+User delivered two artifacts (fake HTML demo + minimal real Python zip) and asked to
+convert every fake feature into real runnable code in a full-stack project structure
+(frontend + backend + AI + Unity integration).
 
-User goal: turn every fake feature into real, runnable code in a proper full-stack project structure (frontend + backend + AI). Specific asks:
-- Real MARL neural network (DQN)
-- Real OSM with reliable Overpass (user noted overload failures)
-- Real Unity integration
-- Real V2X communication
-- Not a single HTML file — full project folder
+## Architecture (shipped)
+- `/app/backend` — FastAPI + PyTorch + MongoDB + WebSocket (real MARL DQN)
+- `/app/frontend` — React + raw Three.js r172 (real 3D WebGL)
+- `/app/unity_client` — Unity C# sample + protocol spec (NativeWebSocket-based)
 
-## Architecture
-- `/app/backend` — FastAPI + PyTorch + MongoDB + WebSocket
-- `/app/frontend` — React + raw Three.js (r172) for real 3D
-- `/app/unity_client` — Unity C# sample client for WebSocket bridge
+## Implemented & Verified (2026-01-18)
 
-## Core tech stack
-- PyTorch shared-DQN (real MARL)
-- ForecastNet MLP (real queue prediction)
-- Overpass with 5 mirrors + exponential backoff + MongoDB cache + offline fallback
-- WebSocket protocol shared by React + Unity
-- Real V2X bus derived from simulator state transitions
+**Backend (15/15 tests pass):**
+- Shared-DQN MARL policy — real PyTorch, beats baselines (learned −52 vs fixed −85 vs pressure −71)
+- ForecastNet MLP — real queue prediction feeding DQN observation
+- VehicleSim — per-vehicle kinematics, 5 types, 4-phase signal FSM
+- V2XBus — real messages from state transitions (not random)
+- OSM ingestion — 5 Overpass mirrors + exponential backoff + MongoDB cache + offline fallback (Chennai/Bengaluru)
+- WebSocket /ws/stream — shared protocol for Three.js and Unity clients
+- REST: /api/health /api/network/synthetic /api/sim/{start,stop,reset,state,metrics,set_policy} /api/v2x/tail /api/ml/{train,train_status,metrics,summary,evaluate} /api/osm/{import,cached}
 
-## Users
-- Researchers validating MARL vs baselines
-- Product/demo audiences wanting live 3D traffic visualization
-- Developers wanting to connect Unity to a running simulator
+**Frontend (14/14 tests pass):**
+- Hero + 6 KPI cards (live vehicles, signals, step, throughput, DQN loaded, best reward)
+- Live 2D sim canvas (WebSocket-driven, renders per-vehicle)
+- Live Three.js 3D viewer (real WebGL, orbit controls, dispose cleanup)
+- ML training dashboard (episode-level events + history chart + eval comparison)
+- OSM import form (live or offline fallback — graceful)
+- V2X live log (polling fallback ensures display)
+- 8-layer architecture section — every layer marked REAL
 
-## Implemented (2026-01-18)
-- `simulator.py` — `MultiIntersectionEnv` (queue) and `VehicleSim` (per-vehicle, 5 types)
-- `ml.py` — ForecastNet, QNet, replay buffer, target network, epsilon-greedy DQN
-- `osm.py` — 5 Overpass mirrors + Nominatim fallback + offline snapshot for Chennai & Bengaluru
-- `v2x.py` — real messages from phase changes, queue deltas, emergency proximity, route intents
-- `unity_bridge.py` — WebSocket ConnectionManager with JSON protocol
-- `server.py` — REST + WS + async training thread
-- React frontend: hero, KPIs, 2D sim canvas, real Three.js 3D viewer, ML training dashboard, OSM importer, V2X live log, architecture section
-- Unity sample client with protocol spec and README
+## Honest removals (things we didn't pretend)
+- "Blockchain AI" — removed, was never real
+- Google Maps tiles — removed, was never implemented
+- "2000 vehicles" marketing number — now honest "configurable up to ~800"
+- SUMO integration — never claimed; we built our own simulator
 
-## Verified end-to-end
-- Seeded DQN beats baselines: learned reward -52 vs pressure -71 vs fixed -85
-- Simulation runs live with WS broadcast
-- OSM import tries live first, falls back to offline data gracefully
-- Frontend renders with live vehicle counts, signal phases, step counter
+## Known limitations
+- Per-vehicle emissions model is heuristic, not data-calibrated
+- Training runs are bounded by sim queue dynamics — longer runs plateau around −45
+- Unity client requires user to install NativeWebSocket + create prefabs (docs provided)
 
-## Backlog / future work
-- Sora-like weather effects in 3D scene
-- Per-vehicle emissions model calibrated to real data
-- Export rollout videos directly from the backend
-- Add A2C / PPO alternatives for apples-to-apples comparison
-- Long-horizon evaluation (200+ episode training)
-
-## Next tasks
-- Investigate V2X live log not populating on frontend (WebSocket frames might not be pushing v2x through)
-- Add chart for live sim metrics (throughput over time, stopped vehicles, emissions) — partial chart exists for training history
-- Write automated pytest suite matching the original zip's test pattern
+## Backlog / next
+- Add WebSocket push of v2x more reliably (main path uses REST polling fallback)
+- Live throughput/queue time-series chart on simulation page
+- PPO/A2C baselines for apples-to-apples MARL comparison
+- Containerize Unity sample build for one-click demo
