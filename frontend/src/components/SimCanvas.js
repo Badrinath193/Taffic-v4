@@ -50,10 +50,12 @@ export default function SimCanvas({ snapshot }) {
     const byId = {};
     nodes.forEach((n) => (byId[n.id] = n));
 
-    // roads
+    // roads - fat, bright, clearly visible at any zoom
     const edges = snapshot.edges || [];
-    c.strokeStyle = "rgba(130, 150, 195, 0.35)";
-    c.lineWidth = 6;
+    const roadWidth = Math.max(6, Math.min(14, 10 * s));
+    // outer glow
+    c.strokeStyle = "rgba(0, 240, 255, 0.08)";
+    c.lineWidth = roadWidth + 8;
     c.lineCap = "round";
     edges.forEach((e) => {
       const a = byId[e.from], b = byId[e.to];
@@ -63,10 +65,21 @@ export default function SimCanvas({ snapshot }) {
       c.lineTo(toX(b.x), toY(b.y));
       c.stroke();
     });
-    // lane dashes
-    c.strokeStyle = "rgba(255,255,255,0.12)";
-    c.lineWidth = 1;
-    c.setLineDash([6, 8]);
+    // main asphalt
+    c.strokeStyle = "rgba(176, 195, 230, 0.78)";
+    c.lineWidth = roadWidth;
+    edges.forEach((e) => {
+      const a = byId[e.from], b = byId[e.to];
+      if (!a || !b) return;
+      c.beginPath();
+      c.moveTo(toX(a.x), toY(a.y));
+      c.lineTo(toX(b.x), toY(b.y));
+      c.stroke();
+    });
+    // lane dashes - darker for contrast on the brighter roads
+    c.strokeStyle = "rgba(15, 20, 36, 0.65)";
+    c.lineWidth = Math.max(1, roadWidth * 0.14);
+    c.setLineDash([8, 8]);
     edges.forEach((e) => {
       const a = byId[e.from], b = byId[e.to];
       if (!a || !b) return;

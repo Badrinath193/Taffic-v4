@@ -188,6 +188,24 @@ async def sim_start(req: SimStartRequest):
     return {"ok": True, "network": RT.sim.export_network()}
 
 
+@app.post("/api/sim/pause")
+async def sim_pause():
+    """Pause the sim without tearing down the world — keeps OSM map, vehicles, signals."""
+    RT.running = False
+    return {"ok": True, "running": False}
+
+
+@app.post("/api/sim/resume")
+async def sim_resume():
+    """Resume without resetting — preserves OSM map, vehicles, and training artifacts."""
+    if RT.sim is None:
+        RT.reset()
+    RT.running = True
+    if RT.loop_task is None or RT.loop_task.done():
+        RT.loop_task = asyncio.create_task(_sim_loop())
+    return {"ok": True, "running": True, "source": getattr(RT.sim, "_source", "synthetic-grid")}
+
+
 @app.post("/api/sim/stop")
 async def sim_stop():
     RT.running = False

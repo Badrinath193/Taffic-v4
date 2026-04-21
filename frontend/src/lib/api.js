@@ -14,6 +14,8 @@ export const api = {
 
   simStart: (cfg) => http.post("/sim/start", cfg).then((r) => r.data),
   simStop: () => http.post("/sim/stop").then((r) => r.data),
+  simPause: () => http.post("/sim/pause").then((r) => r.data),
+  simResume: () => http.post("/sim/resume").then((r) => r.data),
   simReset: (cfg) => http.post("/sim/reset", cfg).then((r) => r.data),
   simState: () => http.get("/sim/state").then((r) => r.data),
   simMetrics: (limit = 200) => http.get("/sim/metrics", { params: { limit } }).then((r) => r.data),

@@ -121,12 +121,21 @@ export default function App() {
   }, [running]);
 
   const onStart = async () => {
+    // Fresh synthetic network (wipes OSM). Use "Resume" to continue instead.
     await api.simStart(simCfg);
     setRunning(true);
   };
   const onStop = async () => {
     await api.simStop();
     setRunning(false);
+  };
+  const onPause = async () => {
+    await api.simPause();
+    setRunning(false);
+  };
+  const onResume = async () => {
+    await api.simResume();
+    setRunning(true);
   };
   const onReset = async () => {
     await api.simReset(simCfg);
@@ -220,7 +229,12 @@ export default function App() {
           through a real FastAPI + WebSocket backbone.
         </p>
         <div className="tn-cta">
-          <button className="btn btn-primary" onClick={onStart} data-testid="hero-start-btn">Start Simulation</button>
+          <button className="btn btn-primary" onClick={onResume} data-testid="hero-start-btn">
+            ▶ {running ? "Running…" : "Start / Resume"}
+          </button>
+          {running && (
+            <button className="btn btn-ghost" onClick={onPause} data-testid="hero-pause-btn">Pause</button>
+          )}
           <a href="#ml" className="btn btn-ghost" data-testid="hero-train-link">Train ML Model →</a>
           <a href="#arch" className="btn btn-ghost" data-testid="hero-arch-link">Architecture</a>
         </div>
@@ -255,12 +269,23 @@ export default function App() {
 
             <div style={{ height: 14 }} />
             <div className="ctrl-row">
-              {!running ? (
-                <button className="btn btn-primary" onClick={onStart} data-testid="sim-start-btn">Start</button>
+              {running ? (
+                <button className="btn btn-danger" onClick={onPause} data-testid="sim-pause-btn">Pause</button>
               ) : (
-                <button className="btn btn-danger" onClick={onStop} data-testid="sim-stop-btn">Stop</button>
+                <button className="btn btn-primary" onClick={onResume} data-testid="sim-resume-btn">▶ Resume</button>
               )}
-              <button className="btn btn-ghost" onClick={onReset} data-testid="sim-reset-btn">Reset</button>
+              <button className="btn btn-ghost" onClick={onReset} data-testid="sim-reset-btn">Reset Grid</button>
+            </div>
+            <div className="ctrl-row" style={{ marginTop: 6 }}>
+              <button
+                className="btn btn-ghost"
+                onClick={onStart}
+                data-testid="sim-start-btn"
+                title="Rebuild a fresh synthetic grid (this wipes any loaded OSM city)"
+                style={{ fontSize: "0.68rem", opacity: 0.8 }}
+              >
+                New Synthetic Grid
+              </button>
             </div>
 
             <div style={{ height: 20 }} />
