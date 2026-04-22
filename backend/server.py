@@ -50,10 +50,17 @@ load_dotenv(Path(__file__).parent / ".env")
 ART_DIR = Path(__file__).parent / "artifacts"
 ART_DIR.mkdir(exist_ok=True)
 
+# Parse ALLOWED_ORIGINS from env, fallback to defaults for local development
+allowed_origins_str = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8001"
+)
+allowed_origins = [o.strip() for o in allowed_origins_str.split(",") if o.strip()]
+
 app = FastAPI(title="Traffic Nexus", version="2.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
