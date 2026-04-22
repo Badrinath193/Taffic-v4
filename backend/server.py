@@ -28,6 +28,7 @@ import torch
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 
@@ -360,7 +361,7 @@ async def osm_import(req: OSMRequest):
         ck_hit["cache"] = "hit"
         return ck_hit
     try:
-        result = import_osm(req.place, req.radius)
+        result = await run_in_threadpool(import_osm, req.place, req.radius)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     try:
@@ -391,7 +392,7 @@ async def osm_load_sim(req: OSMLoadSimRequest):
         result["cache"] = "hit"
     else:
         try:
-            result = import_osm(req.place, req.radius)
+            result = await run_in_threadpool(import_osm, req.place, req.radius)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc))
         try:
