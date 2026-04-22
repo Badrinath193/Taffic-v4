@@ -229,6 +229,8 @@ class VehicleSim:
         self.vehicles: List[Vehicle] = []
         self.next_vid = 0
         self.step_id = 0
+        self._cached_step_id = -1
+        self._vehicles_by_edge = {}
         self.metrics_history: List[Dict] = []
         self._build_grid()
 
@@ -476,23 +478,28 @@ class VehicleSim:
 
     def intersection_obs(self, nid: str) -> np.ndarray:
         """Build an 8-dim observation matching the DQN's expected input."""
+        if not hasattr(self, "_cached_step_id") or self._cached_step_id != self.step_id:
+            self._vehicles_by_edge = {}
+            for v in self.vehicles:
+                self._vehicles_by_edge.setdefault(v.edge, []).append(v)
+            self._cached_step_id = getattr(self, "step_id", -1)
+
         ns_q, ew_q, ns_w, ew_w = 0.0, 0.0, 0.0, 0.0
         incoming = [e for e in self.edges if e["to"] == nid]
         for e in incoming:
             fr, to = self.nodes[e["from"]], self.nodes[e["to"]]
             horizontal = abs(fr["y"] - to["y"]) < 1e-3
-            for v in self.vehicles:
-                if v.edge == (e["from"], e["to"]):
-                    dist = e["length"] - v.pos_on_edge
-                    if dist < 60:
-                        if horizontal:
-                            ew_q += 1
-                            if v.stopped:
-                                ew_w += 1
-                        else:
-                            ns_q += 1
-                            if v.stopped:
-                                ns_w += 1
+            for v in self._vehicles_by_edge.get((e["from"], e["to"]), []):
+                dist = e["length"] - v.pos_on_edge
+                if dist < 60:
+                    if horizontal:
+                        ew_q += 1
+                        if v.stopped:
+                            ew_w += 1
+                    else:
+                        ns_q += 1
+                        if v.stopped:
+                            ns_w += 1
         tl = self.tls[nid]
         phase_high = 0 if tl.phase in (0, 1) else 1
         return np.array([ns_q, ew_q, ns_w, ew_w, float(phase_high), 0.0, 0.0, 0.0], dtype=np.float32)
