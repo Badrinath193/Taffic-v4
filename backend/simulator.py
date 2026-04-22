@@ -224,7 +224,7 @@ class VehicleSim:
         self.nodes: Dict[str, Dict] = {}
         self.edges: List[Dict] = []
         self.adjacency: Dict[str, List[Tuple[str, str]]] = {}   # node -> list of (neighbor, edge_id)
-        self.edge_map: Dict[str, Dict] = {}   # edge_id -> edge record
+        self.edge_map: Dict[Tuple[str, str], Dict] = {}   # edge_id -> edge record
         self.tls: Dict[str, TLState] = {}
         self.vehicles: List[Vehicle] = []
         self.next_vid = 0
@@ -244,7 +244,7 @@ class VehicleSim:
             length = math.hypot(self.nodes[a]["x"] - self.nodes[b]["x"], self.nodes[a]["y"] - self.nodes[b]["y"])
             rec = {"id": eid, "from": a, "to": b, "length": length, "lanes": 2}
             self.edges.append(rec)
-            self.edge_map[eid] = rec
+            self.edge_map[(a, b)] = rec
             self.adjacency.setdefault(a, []).append((b, eid))
 
         for r in range(self.rows):
@@ -323,7 +323,7 @@ class VehicleSim:
                 eid = f"{a}->{b}"
                 rec = {"id": eid, "from": a, "to": b, "length": length, "lanes": 2}
                 self.edges.append(rec)
-                self.edge_map[eid] = rec
+                self.edge_map[(a, b)] = rec
                 self.adjacency.setdefault(a, []).append((b, eid))
 
         # Drop isolated nodes to keep sim valid
@@ -410,7 +410,7 @@ class VehicleSim:
         emissions = 0.0
         new_vehicles: List[Vehicle] = []
         for v in self.vehicles:
-            edge = self.edge_map[f"{v.edge[0]}->{v.edge[1]}"]
+            edge = self.edge_map[v.edge]
             target_node = edge["to"]
             tl = self.tls.get(target_node)
             dist_to_end = edge["length"] - v.pos_on_edge
@@ -467,7 +467,7 @@ class VehicleSim:
                     "id": v.id, "t": v.vtype,
                     "fx": self.nodes[v.edge[0]]["x"], "fy": self.nodes[v.edge[0]]["y"],
                     "tx": self.nodes[v.edge[1]]["x"], "ty": self.nodes[v.edge[1]]["y"],
-                    "p": round(v.pos_on_edge / max(1.0, self.edge_map[f"{v.edge[0]}->{v.edge[1]}"]["length"]), 4),
+                    "p": round(v.pos_on_edge / max(1.0, self.edge_map[v.edge]["length"]), 4),
                     "s": round(v.speed, 2), "st": v.stopped,
                 } for v in self.vehicles
             ],
