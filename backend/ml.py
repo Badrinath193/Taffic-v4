@@ -173,6 +173,58 @@ def attach_forecast(model: ForecastNet, blob: Dict, obs_dict: Dict[str, np.ndarr
     return out
 
 
+def _setup_training(seed: int) -> Tuple[MultiIntersectionEnv, QNet, QNet, Adam, ReplayBuffer]:
+    env = MultiIntersectionEnv(seed=seed)
+    q = QNet().to(DEVICE)
+    target = QNet().to(DEVICE)
+    target.load_state_dict(q.state_dict())
+    opt = Adam(q.parameters(), lr=1e-3)
+    buf = ReplayBuffer(20000)
+    return env, q, target, opt, buf
+
+
+def _select_actions(obs: Dict[str, np.ndarray], q: QNet, epsilon: float) -> Dict[str, int]:
+    actions = {}
+    for aid, ob in obs.items():
+        if random.random() < epsilon:
+            actions[aid] = random.randint(0, 1)
+        else:
+            with torch.no_grad():
+                qv = q(torch.tensor(ob, dtype=torch.float32, device=DEVICE))
+                actions[aid] = int(torch.argmax(qv).item())
+    return actions
+
+
+def _optimize_model(q: QNet, target: QNet, opt: Adam, buf: ReplayBuffer, batch_size: int, gamma: float):
+    if len(buf) >= batch_size:
+        s, a, r, ns, d = buf.sample(batch_size)
+        qvals = q(s).gather(1, a.unsqueeze(1)).squeeze(1)
+        with torch.no_grad():
+            nxt = target(ns).max(dim=1).values
+            tgt = r + gamma * (1.0 - d) * nxt
+        loss = torch.nn.functional.smooth_l1_loss(qvals, tgt)
+        opt.zero_grad(); loss.backward(); opt.step()
+
+
+def _save_training_metrics(out_dir: str, episodes: int, rewards_hist: List[float], queues_hist: List[float], fair_hist: List[float]) -> str:
+    metrics_path = os.path.join(out_dir, "training_metrics.csv")
+    with open(metrics_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["episode", "avg_reward", "avg_queue", "avg_fairness_penalty"])
+        for i, (r, qv, fv) in enumerate(zip(rewards_hist, queues_hist, fair_hist), start=1):
+            writer.writerow([i, r, qv, fv])
+
+    with open(os.path.join(out_dir, "summary.json"), "w") as f:
+        json.dump({
+            "episodes": episodes,
+            "final_avg_reward": rewards_hist[-1] if rewards_hist else 0.0,
+            "final_avg_queue": queues_hist[-1] if queues_hist else 0.0,
+            "final_avg_fairness_penalty": fair_hist[-1] if fair_hist else 0.0,
+            "best_avg_reward": max(rewards_hist) if rewards_hist else 0.0,
+        }, f, indent=2)
+    return metrics_path
+
+
 def train_shared_dqn(
     out_dir: str,
     episodes: int = 40,
@@ -185,12 +237,7 @@ def train_shared_dqn(
     forecast_path = train_forecast_model(out_dir, seed, progress_cb=progress_cb)
     forecast, blob = load_forecast(forecast_path)
 
-    env = MultiIntersectionEnv(seed=seed)
-    q = QNet().to(DEVICE)
-    target = QNet().to(DEVICE)
-    target.load_state_dict(q.state_dict())
-    opt = Adam(q.parameters(), lr=1e-3)
-    buf = ReplayBuffer(20000)
+    env, q, target, opt, buf = _setup_training(seed)
 
     gamma = 0.97
     batch_size = 64
@@ -204,39 +251,29 @@ def train_shared_dqn(
         done = False
         ep_reward = 0.0
         last_info = {}
+
         while not done:
-            actions = {}
-            for aid, ob in obs.items():
-                if random.random() < epsilon:
-                    actions[aid] = random.randint(0, 1)
-                else:
-                    with torch.no_grad():
-                        qv = q(torch.tensor(ob, dtype=torch.float32, device=DEVICE))
-                        actions[aid] = int(torch.argmax(qv).item())
+            actions = _select_actions(obs, q, epsilon)
             next_obs, rewards, done, info = env.step(actions)
             last_info = info
             next_obs = attach_forecast(forecast, blob, next_obs)
+
             for aid in env.agent_ids:
                 buf.push(obs[aid], actions[aid], rewards[aid], next_obs[aid], float(done))
                 ep_reward += rewards[aid]
             obs = next_obs
 
-            if len(buf) >= batch_size:
-                s, a, r, ns, d = buf.sample(batch_size)
-                qvals = q(s).gather(1, a.unsqueeze(1)).squeeze(1)
-                with torch.no_grad():
-                    nxt = target(ns).max(dim=1).values
-                    tgt = r + gamma * (1.0 - d) * nxt
-                loss = torch.nn.functional.smooth_l1_loss(qvals, tgt)
-                opt.zero_grad(); loss.backward(); opt.step()
+            _optimize_model(q, target, opt, buf, batch_size, gamma)
 
         epsilon = max(0.08, epsilon * 0.93)
         if ep % 5 == 0:
             target.load_state_dict(q.state_dict())
+
         avg_reward = ep_reward / env.n_agents / env.max_steps
         rewards_hist.append(avg_reward)
         queues_hist.append(last_info.get("avg_queue", 0.0))
         fair_hist.append(last_info.get("avg_fairness_penalty", 0.0))
+
         if progress_cb:
             progress_cb({
                 "kind": "dqn",
@@ -250,20 +287,8 @@ def train_shared_dqn(
 
     model_path = os.path.join(out_dir, "shared_dqn.pt")
     torch.save(q.state_dict(), model_path)
-    metrics_path = os.path.join(out_dir, "training_metrics.csv")
-    with open(metrics_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["episode", "avg_reward", "avg_queue", "avg_fairness_penalty"])
-        for i, (r, qv, fv) in enumerate(zip(rewards_hist, queues_hist, fair_hist), start=1):
-            writer.writerow([i, r, qv, fv])
-    with open(os.path.join(out_dir, "summary.json"), "w") as f:
-        json.dump({
-            "episodes": episodes,
-            "final_avg_reward": rewards_hist[-1],
-            "final_avg_queue": queues_hist[-1],
-            "final_avg_fairness_penalty": fair_hist[-1],
-            "best_avg_reward": max(rewards_hist),
-        }, f, indent=2)
+    metrics_path = _save_training_metrics(out_dir, episodes, rewards_hist, queues_hist, fair_hist)
+
     return TrainResult(rewards_hist, queues_hist, fair_hist, model_path, forecast_path, metrics_path)
 
 
