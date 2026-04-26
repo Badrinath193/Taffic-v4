@@ -8,7 +8,7 @@ import time
 from collections import deque
 from typing import Deque, Dict, List, Optional
 
-from simulator import VehicleSim, TLState
+from backend.simulator import VehicleSim, TLState
 
 
 class V2XBus:
