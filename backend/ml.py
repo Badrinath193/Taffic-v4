@@ -20,7 +20,7 @@ import torch
 from torch import nn
 from torch.optim import Adam
 
-from simulator import MultiIntersectionEnv
+from backend.simulator import MultiIntersectionEnv
 
 
 DEVICE = torch.device("cpu")

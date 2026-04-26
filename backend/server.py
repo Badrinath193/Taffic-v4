@@ -31,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 
-from ml import (
+from backend.ml import (
     DEVICE,
     attach_forecast,
     evaluate_policy,
@@ -39,10 +39,10 @@ from ml import (
     load_qnet,
     train_shared_dqn,
 )
-from osm import import_osm
-from simulator import MultiIntersectionEnv, VehicleSim
-from unity_bridge import ConnectionManager
-from v2x import V2XBus
+from backend.osm import import_osm
+from backend.simulator import MultiIntersectionEnv, VehicleSim
+from backend.unity_bridge import ConnectionManager
+from backend.v2x import V2XBus
 
 
 load_dotenv(Path(__file__).parent / ".env")
