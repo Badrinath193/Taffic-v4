@@ -363,7 +363,11 @@ async def _cache_put(key: str, value: Dict):
 @app.post("/api/osm/import")
 async def osm_import(req: OSMRequest):
     # cache is async so we wrap sync calls
-    ck_hit = await _cache_get(f"osm:{req.place.lower()}|{req.radius}")
+    try:
+        ck_hit = await _cache_get(f"osm:{req.place.lower()}|{req.radius}")
+    except Exception as exc:
+        print("[warn] cache get failed:", exc)
+        ck_hit = None
     if ck_hit:
         ck_hit["cache"] = "hit"
         return ck_hit
@@ -393,7 +397,11 @@ async def osm_load_sim(req: OSMLoadSimRequest):
     re-render the world using the real OSM nodes, edges and traffic signals.
     """
     # 1. reuse cache if available
-    ck_hit = await _cache_get(f"osm:{req.place.lower()}|{req.radius}")
+    try:
+        ck_hit = await _cache_get(f"osm:{req.place.lower()}|{req.radius}")
+    except Exception as exc:
+        print("[warn] cache get failed:", exc)
+        ck_hit = None
     if ck_hit:
         result = ck_hit
         result["cache"] = "hit"
