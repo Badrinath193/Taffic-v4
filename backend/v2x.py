@@ -50,7 +50,7 @@ class V2XBus:
         for v in self.sim.vehicles:
             if v.vtype != "emergency":
                 continue
-            edge = self.sim.edge_map.get(f"{v.edge[0]}->{v.edge[1]}")
+            edge = self.sim.edge_map.get(v.edge)
             if not edge:
                 continue
             dist = edge["length"] - v.pos_on_edge
