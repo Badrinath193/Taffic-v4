@@ -30,6 +30,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from ml import (
     DEVICE,
@@ -398,7 +399,7 @@ async def osm_load_sim(req: OSMLoadSimRequest):
         result["cache"] = "hit"
     else:
         try:
-            result = import_osm(req.place, req.radius)
+            result = await run_in_threadpool(import_osm, req.place, req.radius)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc))
         try:
