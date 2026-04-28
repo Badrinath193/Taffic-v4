@@ -9,6 +9,7 @@ import json
 import math
 import os
 import time
+import re
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -235,6 +236,8 @@ def import_osm(place: str, radius: int, cache_get=None, cache_put=None) -> Dict:
             return hit
     live_errors: List[str] = []
     try:
+        if not re.match(r"^[\w\s,.\-']+$", place):
+            raise ValueError("Invalid place name format. Only alphanumeric characters and basic punctuation are allowed.")
         loc = geocode(place)
     except Exception as exc:
         live_errors.append(f"geocode: {exc}")
