@@ -1,0 +1,3 @@
+## 2025-03-08 - Missing Form Associations and Improper Label Usage
+**Learning:** Found a widespread pattern of using `<label>` tags purely for styling text above inputs or general sections (e.g., "Signal Policy", "Progress") without proper form association (`htmlFor`/`id`). The inputs themselves also lack accessibility identifiers.
+**Action:** When working on forms, ensure that `<label>` tags are strictly used for form controls and have an explicitly linked `htmlFor` matching the input's `id`. If a label is for an element that cannot be associated or is a section title, use a generic tag like `<div>` instead.

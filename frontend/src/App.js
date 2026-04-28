@@ -259,13 +259,13 @@ export default function App() {
           {/* Controls */}
           <div className="card">
             <div className="card-head"><h3 className="card-title">Controls</h3></div>
-            <label className="field-lbl">Rows × Cols</label>
+            <div className="field-lbl">Rows × Cols</div>
             <div className="ctrl-row">
-              <input className="input" type="number" min="2" max="6" value={simCfg.rows} onChange={(e) => setSimCfg({ ...simCfg, rows: Number(e.target.value) })} data-testid="ctrl-rows" />
-              <input className="input" type="number" min="2" max="6" value={simCfg.cols} onChange={(e) => setSimCfg({ ...simCfg, cols: Number(e.target.value) })} data-testid="ctrl-cols" />
+              <input aria-label="Rows" className="input" type="number" min="2" max="6" value={simCfg.rows} onChange={(e) => setSimCfg({ ...simCfg, rows: Number(e.target.value) })} data-testid="ctrl-rows" />
+              <input aria-label="Columns" className="input" type="number" min="2" max="6" value={simCfg.cols} onChange={(e) => setSimCfg({ ...simCfg, cols: Number(e.target.value) })} data-testid="ctrl-cols" />
             </div>
-            <label className="field-lbl">Max Vehicles</label>
-            <input className="input" type="number" min="20" max="800" value={simCfg.max_vehicles} onChange={(e) => setSimCfg({ ...simCfg, max_vehicles: Number(e.target.value) })} data-testid="ctrl-max" />
+            <label className="field-lbl" htmlFor="sim-max-vehicles">Max Vehicles</label>
+            <input id="sim-max-vehicles" className="input" type="number" min="20" max="800" value={simCfg.max_vehicles} onChange={(e) => setSimCfg({ ...simCfg, max_vehicles: Number(e.target.value) })} data-testid="ctrl-max" />
 
             <div style={{ height: 14 }} />
             <div className="ctrl-row">
@@ -289,14 +289,15 @@ export default function App() {
             </div>
 
             <div style={{ height: 20 }} />
-            <label className="field-lbl">Signal Policy</label>
-            <div className="ctrl-row">
+            <div className="field-lbl">Signal Policy</div>
+            <div className="ctrl-row" role="group" aria-label="Signal Policy">
               {["fixed", "pressure", "learned"].map((p) => (
                 <button
                   key={p}
                   className={`btn ${policy === p ? "btn-primary" : "btn-ghost"}`}
                   onClick={() => onPolicy(p)}
                   data-testid={`policy-${p}`}
+                  aria-pressed={policy === p}
                   style={{ padding: "10px 8px", fontSize: "0.72rem" }}
                 >
                   {p}
@@ -356,15 +357,15 @@ export default function App() {
               <h3 className="card-title">Launch Training</h3>
               <span className={`train-status ${trainStatus.state}`} data-testid="train-status">{trainStatus.state}</span>
             </div>
-            <label className="field-lbl">Episodes</label>
-            <input className="input" type="number" min="5" max="200" value={episodes} onChange={(e) => setEpisodes(e.target.value)} data-testid="train-episodes" />
+            <label className="field-lbl" htmlFor="train-episodes-input">Episodes</label>
+            <input id="train-episodes-input" className="input" type="number" min="5" max="200" value={episodes} onChange={(e) => setEpisodes(e.target.value)} data-testid="train-episodes" />
             <div style={{ height: 10 }} />
             <button className="btn btn-primary" onClick={onTrain} disabled={trainStatus.state === "running"} data-testid="train-btn">
               {trainStatus.state === "running" ? "Training…" : "Train Shared DQN"}
             </button>
 
             <div style={{ height: 18 }} />
-            <label className="field-lbl">Progress</label>
+            <div className="field-lbl">Progress</div>
             <div className="event-log" data-testid="train-log">
               {trainStatus.events?.length === 0 && <div className="muted">No events yet.</div>}
               {trainStatus.events?.slice(-18).map((ev, i) => (
@@ -379,7 +380,7 @@ export default function App() {
             {trainStatus.state === "done" && trainStatus.result && (
               <>
                 <div style={{ height: 14 }} />
-                <label className="field-lbl">Policy Comparison (learned vs baselines)</label>
+                <div className="field-lbl">Policy Comparison (learned vs baselines)</div>
                 <div className="metric-row"><span>Learned reward</span><span data-testid="eval-learned-reward">{fmt(trainStatus.result.evaluation.learned_reward, 2)}</span></div>
                 <div className="metric-row"><span>Pressure reward</span><span>{fmt(trainStatus.result.evaluation.pressure_reward, 2)}</span></div>
                 <div className="metric-row"><span>Fixed reward</span><span>{fmt(trainStatus.result.evaluation.fixed_reward, 2)}</span></div>
@@ -440,17 +441,17 @@ export default function App() {
         <div className="grid-2">
           <div className="card">
             <div className="card-head"><h3 className="card-title">Import</h3></div>
-            <label className="field-lbl">Place</label>
-            <input className="input" value={osmPlace} onChange={(e) => setOsmPlace(e.target.value)} data-testid="osm-place" />
+            <label className="field-lbl" htmlFor="osm-place-input">Place</label>
+            <input id="osm-place-input" className="input" value={osmPlace} onChange={(e) => setOsmPlace(e.target.value)} data-testid="osm-place" />
             <div style={{ height: 10 }} />
             <div className="grid-2" style={{ gap: 10 }}>
               <div>
-                <label className="field-lbl">Radius (m)</label>
-                <input className="input" type="number" value={osmRadius} onChange={(e) => setOsmRadius(e.target.value)} data-testid="osm-radius" />
+                <label className="field-lbl" htmlFor="osm-radius-input">Radius (m)</label>
+                <input id="osm-radius-input" className="input" type="number" value={osmRadius} onChange={(e) => setOsmRadius(e.target.value)} data-testid="osm-radius" />
               </div>
               <div>
-                <label className="field-lbl">Max Nodes</label>
-                <input className="input" type="number" value={osmMaxNodes} onChange={(e) => setOsmMaxNodes(e.target.value)} data-testid="osm-max-nodes" />
+                <label className="field-lbl" htmlFor="osm-max-nodes-input">Max Nodes</label>
+                <input id="osm-max-nodes-input" className="input" type="number" value={osmMaxNodes} onChange={(e) => setOsmMaxNodes(e.target.value)} data-testid="osm-max-nodes" />
               </div>
             </div>
             <div style={{ height: 12 }} />
