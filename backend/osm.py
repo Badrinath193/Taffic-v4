@@ -225,43 +225,45 @@ def cache_key(place: str, radius: int) -> str:
     return f"osm:{h}"
 
 
-def import_osm(place: str, radius: int, cache_get=None, cache_put=None) -> Dict:
-    """High-level OSM import with caching + offline fallback."""
-    ck = cache_key(place, radius)
+def _check_cache(ck: str, cache_get) -> Optional[Dict]:
     if cache_get:
         hit = cache_get(ck)
         if hit:
             hit["cache"] = "hit"
             return hit
-    live_errors: List[str] = []
+    return None
+
+def _fetch_live_data(place: str, radius: int, ck: str, cache_put, live_errors: List[str]) -> Optional[Dict]:
     try:
         loc = geocode(place)
     except Exception as exc:
         live_errors.append(f"geocode: {exc}")
-        loc = None
+        return None
 
-    if loc is not None:
-        try:
-            query = build_query(loc["lat"], loc["lon"], radius)
-            raw = query_overpass(query)
-            graph = parse_overpass(raw["data"], loc["lat"], loc["lon"])
-            if graph["nodes"]:
-                result = {
-                    "place": place,
-                    "location": loc,
-                    "radius": radius,
-                    "overpass_endpoint": raw["endpoint"],
-                    "graph": graph,
-                    "cache": "miss",
-                    "source": "live",
-                }
-                if cache_put:
-                    cache_put(ck, result)
-                return result
-            live_errors.append("overpass returned empty graph")
-        except Exception as exc:
-            live_errors.append(f"overpass: {exc}")
+    try:
+        query = build_query(loc["lat"], loc["lon"], radius)
+        raw = query_overpass(query)
+        graph = parse_overpass(raw["data"], loc["lat"], loc["lon"])
+        if graph["nodes"]:
+            result = {
+                "place": place,
+                "location": loc,
+                "radius": radius,
+                "overpass_endpoint": raw["endpoint"],
+                "graph": graph,
+                "cache": "miss",
+                "source": "live",
+            }
+            if cache_put:
+                cache_put(ck, result)
+            return result
+        live_errors.append("overpass returned empty graph")
+    except Exception as exc:
+        live_errors.append(f"overpass: {exc}")
 
+    return None
+
+def _get_offline_fallback(place: str, radius: int, live_errors: List[str]) -> Dict:
     fallback = load_offline_fallback(place)
     if fallback:
         return {
@@ -274,3 +276,20 @@ def import_osm(place: str, radius: int, cache_get=None, cache_put=None) -> Dict:
             "live_error": " | ".join(live_errors) if live_errors else None,
         }
     raise RuntimeError("OSM import failed: " + " | ".join(live_errors))
+
+
+def import_osm(place: str, radius: int, cache_get=None, cache_put=None) -> Dict:
+    """High-level OSM import with caching + offline fallback."""
+    ck = cache_key(place, radius)
+
+    cached_result = _check_cache(ck, cache_get)
+    if cached_result:
+        return cached_result
+
+    live_errors: List[str] = []
+
+    live_result = _fetch_live_data(place, radius, ck, cache_put, live_errors)
+    if live_result:
+        return live_result
+
+    return _get_offline_fallback(place, radius, live_errors)
