@@ -1006,12 +1006,25 @@ function updateTLPanel(){
   const el=getElementById('tl-panel');
   const pc=['#ff3b3b','#ff3b3b','#ffb800','#00ff88'];
   const pl=['RED','RED','AMB','GRN'];
-  el.innerHTML=S.tlStates.slice(0,20).map(tl=>`
-    <div class="tl-unit">
-      <div class="tl-id">${tl.id}</div>
-      <div class="tl-lamp" style="background:${pc[tl.phase]};box-shadow:0 0 7px ${pc[tl.phase]};"></div>
-      <div class="tl-ph">${pl[tl.phase]}</div>
-    </div>`).join('');
+  el.innerHTML='';
+  S.tlStates.slice(0,20).forEach(tl=>{
+    const div=document.createElement('div');
+    div.className='tl-unit';
+    const idDiv=document.createElement('div');
+    idDiv.className='tl-id';
+    idDiv.textContent=tl.id;
+    const lampDiv=document.createElement('div');
+    lampDiv.className='tl-lamp';
+    lampDiv.style.background=pc[tl.phase];
+    lampDiv.style.boxShadow=`0 0 7px ${pc[tl.phase]}`;
+    const phDiv=document.createElement('div');
+    phDiv.className='tl-ph';
+    phDiv.textContent=pl[tl.phase];
+    div.appendChild(idDiv);
+    div.appendChild(lampDiv);
+    div.appendChild(phDiv);
+    el.appendChild(div);
+  });
 }
 
 // ================================================================
@@ -1028,16 +1041,24 @@ function appendV2X(types){
   const tlId=tl?tl.id:'TL??';
   const vehId='V'+Math.floor(Math.random()*S.vehicles.length);
   const templates=[
-    `${vehId} -&gt; ${tlId} QUEUE:${Math.floor(Math.random()*20)} PHASE:${Math.floor(Math.random()*4)}`,
-    `${tlId} -&gt; BROADCAST PHASE_SWITCH T+${(Math.random()*5+5).toFixed(0)}s`,
-    `${vehId} -&gt; ${tlId} ETA:${(Math.random()*30+5).toFixed(1)}s SPD:${(Math.random()*15+5).toFixed(1)}m/s`,
+    `${vehId} -> ${tlId} QUEUE:${Math.floor(Math.random()*20)} PHASE:${Math.floor(Math.random()*4)}`,
+    `${tlId} -> BROADCAST PHASE_SWITCH T+${(Math.random()*5+5).toFixed(0)}s`,
+    `${vehId} -> ${tlId} ETA:${(Math.random()*30+5).toFixed(1)}s SPD:${(Math.random()*15+5).toFixed(1)}m/s`,
     `${tlId} DENSITY:${Math.floor(Math.random()*100)}% QUEUE:${Math.floor(Math.random()*15)}`,
-    `EMERGENCY PREEMPT ${tlId} -&gt; CLEAR NOW`,
+    `EMERGENCY PREEMPT ${tlId} -> CLEAR NOW`,
   ];
   const idx=Math.floor(Math.random()*V2X_MSGS.length);
   const[cls,src,type]=V2X_MSGS[idx];
   const div=document.createElement('div');div.className='vle';
-  div.innerHTML=`<span class="vbadge ${cls}">${type}</span><span style="color:var(--text2);font-size:.52rem;">${templates[idx]}</span>`;
+  const span1 = document.createElement('span');
+  span1.className = `vbadge ${cls}`;
+  span1.textContent = type;
+  const span2 = document.createElement('span');
+  span2.style.color = 'var(--text2)';
+  span2.style.fontSize = '.52rem';
+  span2.textContent = templates[idx];
+  div.appendChild(span1);
+  div.appendChild(span2);
   log.insertBefore(div,log.firstChild);
   if(log.children.length>50)log.removeChild(log.lastChild);
 }
@@ -1426,7 +1447,29 @@ function drawCharts(){
 function updateFleet(){
   const g=getElementById('fleet-grid');
   const sample=S.vehicles.slice(0,96);
-  g.innerHTML=sample.map(v=>`<div class="fleet-card" style="border:1px solid ${v.color}25;"><div style="color:${v.color};font-size:.5rem;margin-bottom:.15rem;">${v.type}</div><div style="color:#3a4558;font-size:.48rem;">${v.id}</div><div style="color:#7a8fa8;font-size:.5rem;">SPD:${v.speed.toFixed(1)} ${v.stopped?'\u26D4':'\u25B6'}</div></div>`).join('');
+  g.innerHTML='';
+  sample.forEach(v=>{
+    const div=document.createElement('div');
+    div.className='fleet-card';
+    div.style.border=`1px solid ${v.color}25`;
+    const tDiv=document.createElement('div');
+    tDiv.style.color=v.color;
+    tDiv.style.fontSize='.5rem';
+    tDiv.style.marginBottom='.15rem';
+    tDiv.textContent=v.type;
+    const iDiv=document.createElement('div');
+    iDiv.style.color='#3a4558';
+    iDiv.style.fontSize='.48rem';
+    iDiv.textContent=v.id;
+    const sDiv=document.createElement('div');
+    sDiv.style.color='#7a8fa8';
+    sDiv.style.fontSize='.5rem';
+    sDiv.textContent=`SPD:${v.speed.toFixed(1)} ${v.stopped?'\u26D4':'\u25B6'}`;
+    div.appendChild(tDiv);
+    div.appendChild(iDiv);
+    div.appendChild(sDiv);
+    g.appendChild(div);
+  });
 }
 
 // ================================================================
