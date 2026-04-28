@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Dict
 import csv
@@ -75,6 +76,8 @@ def metrics():
 
 @app.post("/api/osm/import")
 def osm_import(req: GeocodeRequest):
+    if not re.match(r'^[a-zA-Z0-9\s,\.\-]+$', req.place):
+        raise HTTPException(status_code=400, detail="Invalid characters in place string")
     try:
         loc = geocode(req.place)
         query = build_query(loc["lat"], loc["lon"], req.radius)
