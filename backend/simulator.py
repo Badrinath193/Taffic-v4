@@ -244,7 +244,8 @@ class VehicleSim:
         def add_edge(a: str, b: str):
             eid = f"{a}->{b}"
             length = math.hypot(self.nodes[a]["x"] - self.nodes[b]["x"], self.nodes[a]["y"] - self.nodes[b]["y"])
-            rec = {"id": eid, "from": a, "to": b, "length": length, "lanes": 2}
+            horizontal = abs(self.nodes[a]["y"] - self.nodes[b]["y"]) < 1e-3
+            rec = {"id": eid, "from": a, "to": b, "length": length, "lanes": 2, "horizontal": horizontal}
             self.edges.append(rec)
             self.edge_map[(a, b)] = rec
             self.adjacency.setdefault(a, []).append((b, eid))
@@ -323,7 +324,8 @@ class VehicleSim:
                 if length < 5.0:
                     continue
                 eid = f"{a}->{b}"
-                rec = {"id": eid, "from": a, "to": b, "length": length, "lanes": 2}
+                horizontal = abs(self.nodes[a]["y"] - self.nodes[b]["y"]) < 1e-3
+                rec = {"id": eid, "from": a, "to": b, "length": length, "lanes": 2, "horizontal": horizontal}
                 self.edges.append(rec)
                 self.edge_map[(a, b)] = rec
                 self.adjacency.setdefault(a, []).append((b, eid))
@@ -362,8 +364,7 @@ class VehicleSim:
 
     def _is_green_for_edge(self, tl: TLState, edge: Dict) -> bool:
         # infer direction: horizontal (c changes) vs vertical (r changes)
-        fr = self.nodes[edge["from"]]; to = self.nodes[edge["to"]]
-        horizontal = abs(fr["y"] - to["y"]) < 1e-3
+        horizontal = edge.get("horizontal", False)
         # NS green (phase 0) serves vertical; EW green (phase 2) serves horizontal
         if tl.phase == 0:   # NS green
             return not horizontal
@@ -418,8 +419,7 @@ class VehicleSim:
             dist_to_end = edge["length"] - v.pos_on_edge
             should_stop = False
             if tl is not None and v.vtype != "emergency":
-                green = self._is_green_for_edge(tl, edge)
-                if not green and dist_to_end < 14.0:
+                if dist_to_end < 14.0 and not self._is_green_for_edge(tl, edge):
                     should_stop = True
             # acceleration / decel
             if should_stop:
@@ -487,8 +487,7 @@ class VehicleSim:
         ns_q, ew_q, ns_w, ew_w = 0.0, 0.0, 0.0, 0.0
         incoming = [e for e in self.edges if e["to"] == nid]
         for e in incoming:
-            fr, to = self.nodes[e["from"]], self.nodes[e["to"]]
-            horizontal = abs(fr["y"] - to["y"]) < 1e-3
+            horizontal = e.get("horizontal", False)
             for v in self._vehicles_by_edge.get((e["from"], e["to"]), []):
                 dist = e["length"] - v.pos_on_edge
                 if dist < 60:

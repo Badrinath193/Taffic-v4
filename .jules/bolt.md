@@ -1,0 +1,3 @@
+## 2025-05-01 - Simulator pre-computation
+**Learning:** Found a performance bottleneck where horizontal/vertical edge direction was constantly re-computed from floating point coordinates on every frame inside the simulator's innermost vehicle iteration loop and signal state evaluation loop (`abs(fr["y"] - to["y"]) < 1e-3`).
+**Action:** When edge geometry is static, pre-compute directions/distances once at instantiation (`_build_grid` or `load_from_osm`) and store them in the edge dictionaries. Short-circuit expensive condition checks by ordering fast scalar comparisons (`dist < 14.0`) before function calls (`_is_green_for_edge`).
