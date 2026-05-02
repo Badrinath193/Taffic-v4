@@ -1,0 +1,3 @@
+## 2024-06-25 - App-specific semantic HTML and form groupings
+**Learning:** This application heavily uses `<label>` elements incorrectly as visual headings for generic non-form content (like "Progress") and for custom compound inputs (like "Signal Policy" buttons or grouped "Rows x Cols" inputs).
+**Action:** Always check the element type a label is wrapping or preceding. For pure visual headings, convert the `<label>` to a `<div className="field-lbl">`. For groups of custom controls, wrap the controls in `role="group"` with an `aria-labelledby` pointing to a `div` replacing the label, and ensure individual interactable elements inside have attributes like `aria-label` or `aria-pressed`.
