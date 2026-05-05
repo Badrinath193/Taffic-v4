@@ -361,9 +361,14 @@ class VehicleSim:
         self.vehicles.append(v)
 
     def _is_green_for_edge(self, tl: TLState, edge: Dict) -> bool:
-        # infer direction: horizontal (c changes) vs vertical (r changes)
-        fr = self.nodes[edge["from"]]; to = self.nodes[edge["to"]]
-        horizontal = abs(fr["y"] - to["y"]) < 1e-3
+        # ⚡ Bolt: Cache horizontal geometry computation to avoid dict lookups and math in hot loop
+        horizontal = edge.get("horizontal")
+        if horizontal is None:
+            # infer direction: horizontal (c changes) vs vertical (r changes)
+            fr = self.nodes[edge["from"]]; to = self.nodes[edge["to"]]
+            horizontal = abs(fr["y"] - to["y"]) < 1e-3
+            edge["horizontal"] = horizontal
+
         # NS green (phase 0) serves vertical; EW green (phase 2) serves horizontal
         if tl.phase == 0:   # NS green
             return not horizontal
@@ -417,9 +422,10 @@ class VehicleSim:
             tl = self.tls.get(target_node)
             dist_to_end = edge["length"] - v.pos_on_edge
             should_stop = False
-            if tl is not None and v.vtype != "emergency":
+            # ⚡ Bolt: Short-circuit expensive _is_green_for_edge if vehicle is too far from intersection
+            if tl is not None and v.vtype != "emergency" and dist_to_end < 14.0:
                 green = self._is_green_for_edge(tl, edge)
-                if not green and dist_to_end < 14.0:
+                if not green:
                     should_stop = True
             # acceleration / decel
             if should_stop:
